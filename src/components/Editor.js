@@ -1,0 +1,47 @@
+import React,{useEffect,useState} from 'react';
+import {View,Text,Modal,KeyboardAvoidingView,ScrollView,Pressable,Platform,Alert,Image} from 'react-native';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import * as Crypto from 'expo-crypto';
+import * as ImagePicker from 'expo-image-picker';
+import {useFarm} from '../context/FarmContext';
+import {Icon,Field,Select,Button,Card,Status,s} from './UI';
+import {colors as c} from '../theme';
+import {today,fullDate} from '../utils/format';
+import {validateRecord,applyMovement} from '../utils/domain.cjs';
+const defaults={plot:{name:'',crop:'Soja',area:'',stage:'Plantio',progress:'0',irrigation:'Pendente',irrigationDate:''},item:{name:'',category:'Sementes',quantity:'0',unit:'sacas (50 kg)',min:'5',photo:2},machine:{name:'',type:'Trator',status:'Disponível',hours:'0',maintenanceDate:'',photo:0},note:{title:'',text:'',kind:'Observação',date:'',plotId:''},move:{itemId:'',quantity:'',kind:'Entrada',date:''},task:{name:'',plotId:'',date:'',done:false},weather:{temperature:'',weather:'Céu limpo',weatherDate:''},profile:{name:'',farm:''}};
+const titles={plot:'Talhão',item:'Insumo',machine:'Equipamento',note:'Observação',move:'Movimentar estoque',task:'Atividade',tasks:'Atividades',weather:'Clima observado',profile:'Meu perfil'};
+export default function Editor({type,record,onClose,open,selected}){
+ const {data,user,mutate,saving,signOut,profile}=useFarm(),insets=useSafeAreaInsets();const [form,setForm]=useState({}),[error,setError]=useState(''),[localBusy,setLocalBusy]=useState(false);const busy=saving||localBusy;
+ useEffect(()=>{setError('');setForm({...defaults[type],...(type==='profile'?{name:user?.name,farm:user?.farm}:{}),...(type==='note'?{plotId:selected||data?.plots[0]?.id}:{}),...(['note','task','move'].includes(type)?{date:today()}:{}),...(record||{})})},[type,record,user?.id]);
+ const set=(key,value)=>setForm(f=>({...f,[key]:value}));
+ const input=(key,label,opts={})=><Field label={label} value={form[key]} onChange={v=>set(key,v)} {...opts}/>;
+ const select=(key,label,options)=><Select label={label} value={form[key]} onChange={v=>set(key,v)} options={options}/>;
+ const plotOptions=(data?.plots||[]).map(p=>({label:`${p.name} · ${p.crop}`,value:p.id}));
+ async function photo(){try{const permission=await ImagePicker.requestMediaLibraryPermissionsAsync();if(!permission.granted)return Alert.alert('Permissão necessária','Permita acesso às fotos nas configurações do celular.');const result=await ImagePicker.launchImageLibraryAsync({mediaTypes:['images'],allowsEditing:true,aspect:[4,3],quality:.2,base64:true});if(result.canceled)return;const asset=result.assets[0];if(!asset.base64||asset.base64.length>350000)return Alert.alert('Foto muito grande','Escolha uma foto menor para este protótipo local.');setForm(f=>({...f,photo:`data:${asset.mimeType||'image/jpeg'};base64,${asset.base64}`,samplePhoto:false,kind:'Foto'}))}catch(e){Alert.alert('Não foi possível abrir a foto',e.message)}}
+ async function save(){setError('');setLocalBusy(true);try{
+  const id=record?.id||Crypto.randomUUID();
+  if(type==='profile'){await profile(form);onClose();return}
+  const values=validateRecord(type,form);
+  if(type==='move'){await mutate(d=>applyMovement(d,{...form,id,date:form.date}));onClose();return}
+  if(type==='weather'){await mutate(d=>({...d,plots:d.plots.map(p=>p.id===record.id?{...p,temperature:values.temperature,weather:form.weather,weatherDate:today()}:p)}));onClose();return}
+  if((type==='note'||type==='task')&&!form.plotId)throw Error('Selecione um talhão.');
+  const list={plot:'plots',item:'items',machine:'machines',note:'notes',task:'tasks'}[type];
+  let entry={...values,id};if(type==='note'&&!entry.title)entry.title=entry.kind;
+  if(type==='machine')entry.photo={Trator:0,Pulverizador:1,Plantadeira:2,Ferramenta:0}[form.type];
+  if(type==='item')entry.photo=form.category==='Sementes'?2:form.category==='Defensivos'?5:form.name.toLowerCase().includes('ureia')?4:3;
+  await mutate(d=>{const entries=record?.id?d[list].map(x=>x.id===record.id?entry:x):[entry,...d[list]];if(type==='note'&&entries.reduce((sum,n)=>sum+(n.photo?.length||0),0)>1000000)throw Error('Limite de fotos locais atingido. Remova uma foto antes de adicionar outra.');return {...d,[list]:entries}});
+  onClose();
+ }catch(e){setError(e.message||'Não foi possível salvar.')}finally{setLocalBusy(false)}}
+ function remove(){Alert.alert('Excluir registro?','Esta ação remove o registro deste aparelho.',[{text:'Cancelar',style:'cancel'},{text:'Excluir',style:'destructive',onPress:async()=>{try{const list={plot:'plots',item:'items',machine:'machines',note:'notes',task:'tasks'}[type];await mutate(d=>{const next={...d,[list]:d[list].filter(x=>x.id!==record.id)};if(type==='plot'){next.notes=d.notes.filter(x=>x.plotId!==record.id);next.tasks=d.tasks.filter(x=>x.plotId!==record.id)}return next});onClose()}catch(e){setError(e.message)}}}])}
+ return <Modal visible={!!type} animationType="slide" onRequestClose={onClose}><KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':undefined} style={{flex:1,backgroundColor:c.bg,paddingTop:insets.top}}><View style={{padding:20,flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}><Text style={{fontSize:23,fontWeight:'700',color:c.text}}>{titles[type]||''}</Text><Pressable accessibilityLabel="Fechar formulário" disabled={busy} onPress={onClose} hitSlop={10}><Icon name="close"/></Pressable></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{paddingHorizontal:21,paddingBottom:insets.bottom+26}}>
+ {type==='plot'&&<>{input('name','Nome do talhão')}{input('crop','Cultura')}{input('area','Área (ha)',{number:true})}{select('stage','Estágio',['Plantio','Germinação','Desenvolvimento vegetativo','Floração','Frutificação','Colheita'])}{input('progress','Progresso (%)',{number:true})}{select('irrigation','Irrigação',['Ativa','Pendente','Não necessária'])}{input('irrigationDate','Última irrigação (AAAA-MM-DD)',{placeholder:'2026-09-29'})}</>}
+ {type==='item'&&<>{input('name','Nome do insumo')}{select('category','Categoria',['Sementes','Fertilizantes','Defensivos','Outros'])}{input('quantity',record?.id?'Saldo atual (use Entrada/Saída para alterar)':'Quantidade inicial',{number:true,editable:!record?.id})}{input('unit','Unidade')}{input('min','Estoque mínimo',{number:true})}</>}
+ {type==='machine'&&<>{input('name','Nome do equipamento')}{select('type','Tipo',['Trator','Pulverizador','Plantadeira','Ferramenta'])}{select('status','Situação',['Disponível','Em uso','Manutenção em breve','Em manutenção'])}{input('hours','Horas de uso',{number:true})}{input('maintenanceDate','Manutenção (AAAA-MM-DD)',{placeholder:'2026-10-10'})}</>}
+ {type==='note'&&<>{select('plotId','Talhão',plotOptions)}{select('kind','Tipo',['Observação','Pragas','Irrigação','Aplicação','Colheita','Foto'])}{input('title','Título (opcional)')}{input('text','Descrição',{multiline:true})}{input('date','Data (AAAA-MM-DD)')}{form.photo&&<Image source={{uri:form.photo}} style={{height:150,borderRadius:10,marginBottom:12}}/>}<Button title={form.photo?'Trocar foto':'Adicionar foto'} icon="camera" variant="outline" onPress={photo}/>{form.photo&&<Pressable onPress={()=>set('photo',null)} style={{padding:10}}><Text style={{color:c.danger}}>Remover foto</Text></Pressable>}</>}
+ {type==='move'&&<>{select('itemId','Insumo',data?.items.map(i=>({label:`${i.name} (${i.quantity} ${i.unit})`,value:i.id}))||[])}{select('kind','Movimentação',['Entrada','Saída'])}{input('quantity','Quantidade',{number:true})}{input('date','Data (AAAA-MM-DD)')}</>}
+ {type==='weather'&&<>{input('temperature','Temperatura (°C)',{number:true})}{select('weather','Condição observada',['Céu limpo','Parcialmente nublado','Nublado','Chuva','Chuva forte'])}<Text style={s.hint}>O registro será marcado com a data de hoje.</Text></>}
+ {type==='task'&&<>{input('name','Atividade')}{select('plotId','Talhão',plotOptions)}{input('date','Data (AAAA-MM-DD)')}{select('done','Situação',[{label:'Pendente',value:false},{label:'Concluída',value:true}])}</>}
+ {type==='tasks'&&<><View style={s.listGap}>{data?.tasks.map(t=><Card key={t.id} onPress={()=>open('task',t)}><Text style={s.bold}>{t.name}</Text><Text style={s.muted}>{fullDate(t.date)}</Text><Status text={t.done?'Concluída':'Pendente'} warning={!t.done}/></Card>)}</View><Button title="Nova atividade" icon="plus" onPress={()=>open('task')} style={{marginTop:18}}/></>}
+ {type==='profile'&&<>{input('name','Seu nome')}{input('farm','Propriedade')}<Text style={s.muted}>{user?.email}</Text><Text style={[s.hint,{marginBottom:18}]}>Protótipo mobile · os dados e a conta ficam neste aparelho.</Text><Button title="Sair da conta" icon="logout" variant="outline" onPress={()=>Alert.alert('Sair?','Você poderá entrar novamente com a mesma conta local.',[{text:'Cancelar',style:'cancel'},{text:'Sair',onPress:async()=>{try{await signOut();onClose()}catch(e){setError(e.message)}}}])}/></>}
+ {!!error&&<Text accessibilityRole="alert" style={s.error}>{error}</Text>}{type!=='tasks'&&<Button title={busy?'Salvando…':'Salvar'} disabled={busy} onPress={save} style={{marginTop:22}}/>}{record?.id&&['plot','item','machine','note','task'].includes(type)&&<Pressable disabled={busy} onPress={remove} style={{alignItems:'center',padding:18}}><Text style={{color:c.danger,fontSize:14}}>Excluir registro</Text></Pressable>}</ScrollView></KeyboardAvoidingView></Modal>
+}

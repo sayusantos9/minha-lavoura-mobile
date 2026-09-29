@@ -1,0 +1,2 @@
+export const colors = { bg:'#F7F4EB', card:'#FAF8F1', green:'#144F34', green2:'#34764E', text:'#15221B', muted:'#59605B', border:'#E1DDCF', gold:'#FFC421', paleGold:'#FFF0C4', danger:'#BB4528', white:'#FFFFFF', gray:'#949991' };
+export const assets = { farmer:require('../assets/farmer.png'), field:require('../assets/field.png'), machines:require('../assets/machines.png'), crops:require('../assets/crops-inputs.png') };

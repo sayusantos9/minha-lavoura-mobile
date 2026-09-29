@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Minha Lavoura",
+    "slug": "minha-lavoura-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.minhalavoura.mobile"
+    },
+    "android": {
+      "package": "com.minhalavoura.mobile"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permita selecionar fotos da lavoura para suas observações.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
+    ]
+  }
+}

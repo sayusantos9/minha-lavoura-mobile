@@ -1,0 +1,10 @@
+const {spawnSync}=require('node:child_process');
+const result=spawnSync(process.platform==='win32'?'npx.cmd':'npx',['expo','install','@expo/vector-icons','@react-native-async-storage/async-storage','react-native-safe-area-context','expo-crypto','expo-print','expo-sharing','expo-image-picker'],{stdio:'inherit',shell:process.platform==='win32'});
+if(result.status!==0)process.exit(result.status??1);
+const fs=require('node:fs');
+const path=require('node:path');
+const file=path.join(__dirname,'../app.json');
+const config=JSON.parse(fs.readFileSync(file,'utf8'));
+config.expo.plugins=[['expo-image-picker',{photosPermission:'Permita selecionar fotos da lavoura para suas observações.',cameraPermission:false,microphonePermission:false}]];
+fs.writeFileSync(file,JSON.stringify(config,null,2)+'\n');
+console.log('Bibliotecas configuradas. Execute npm start.');
